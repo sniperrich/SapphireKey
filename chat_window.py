@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QMessageBox,QPushButton
 from PyQt5.QtCore import Qt
 from bubble_message import ChatWidget
 from friendlist import FriendList
@@ -6,8 +6,9 @@ from chat_history import ChatHistory
 import asyncio
 
 class ChatWindow(QMainWindow):
-    def __init__(self, username, nickname, chat_client):
+    def __init__(self, user_id, username, nickname, chat_client):
         super().__init__()
+        self.user_id = user_id
         self.username = username
         self.nickname = nickname
         self.chat_client = chat_client
@@ -37,7 +38,7 @@ class ChatWindow(QMainWindow):
         # 创建好友列表
         self.friend_list = FriendList()
         self.friend_list.friend_selected.connect(self.on_friend_selected)
-        
+        add_button=QPushButton()
         # 创建聊天区域
         self.chat_widget = ChatWidget()
         
@@ -52,11 +53,16 @@ class ChatWindow(QMainWindow):
         
     def load_friends(self):
         """加载好友列表"""
-        # 这里应该从数据库获取好友列表
-        # 暂时添加测试数据
-        self.friend_list.add_friend('bubble_message/data/head1.jpg', '张三')
-        self.friend_list.add_friend('bubble_message/data/head2.jpg', '李四')
-        self.friend_list.add_friend('bubble_message/data/head1.jpg', '王')
+        try:
+            # 从数据库获取好友列表
+            friends = self.chat_client.db.get_friends(self.user_id)
+            for friend in friends:
+                self.friend_list.add_friend(
+                    friend['avatar_path'],  # 使用好友的头像
+                    friend['nickname']      # 使用好友的昵称
+                )
+        except Exception as e:
+            print(f"加载好友列表失败: {e}")
         
     def on_friend_selected(self, friend_nickname):
         """处理好友选择事件"""
@@ -75,7 +81,7 @@ class ChatWindow(QMainWindow):
             if from_nickname == self.current_friend:
                 self.chat_widget.add_message(
                     content=content,
-                    is_send=False,
+                    is_send=True,
                     avatar_path='bubble_message/data/head2.jpg',
                     message_type=message_type
                 )
@@ -96,12 +102,12 @@ class ChatWindow(QMainWindow):
             ))
             
             # 在本地显示消息
-            self.chat_widget.add_message(
-                content,
-                True,  # 发送的消息
-                'bubble_message/data/head1.jpg',  # 自己的头像
-                'text'  # 消息类型
-            )
+            # self.chat_widget.add_message(
+            #     content,
+            #     True,  # 发送的消息
+            #     'bubble_message/data/head1.jpg',  # 自己的头像
+            #     'text'  # 消息类型
+            # )
         except Exception as e:
             print(f"发送消息失败: {e}")
             QMessageBox.warning(self, "错误", f"发送消息失败: {str(e)}")

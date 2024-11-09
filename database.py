@@ -18,11 +18,12 @@ class Database:
     def create_tables(self):
         """创建数据库表"""
         try:
-            # 创建用户表
+            # 修改用户表，添加password字段
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
                     nickname TEXT NOT NULL,
                     avatar_path TEXT
                 )
@@ -33,9 +34,10 @@ class Database:
                 CREATE TABLE IF NOT EXISTS friendships (
                     user_id INTEGER,
                     friend_id INTEGER,
-                    PRIMARY KEY (user_id, friend_id),
+                    status TEXT DEFAULT 'pending',
                     FOREIGN KEY (user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (friend_id) REFERENCES users (user_id)
+                    FOREIGN KEY (friend_id) REFERENCES users (user_id),
+                    PRIMARY KEY (user_id, friend_id)
                 )
             ''')
             
@@ -58,49 +60,71 @@ class Database:
             print(f"创建表失败: {e}")
             raise
     
-    def add_user(self, username, nickname, avatar_path):
-        """添加用户"""
+    def add_user(self, username, password, nickname, avatar_path):
+        """注册新用户"""
         try:
             self.cursor.execute('''
-                INSERT INTO users (username, nickname, avatar_path)
-                VALUES (?, ?, ?)
-            ''', (username, nickname, avatar_path))
+                INSERT INTO users (username, password, nickname, avatar_path)
+                VALUES (?, ?, ?, ?)
+            ''', (username, password, nickname, avatar_path))
             self.conn.commit()
-            
-            # 获取新插入的用户ID
-            self.cursor.execute('SELECT last_insert_rowid()')
-            user_id = self.cursor.fetchone()[0]
-            print(f"添加用户成功: {username}, ID={user_id}")
-            return user_id
-        except sqlite3.IntegrityError:
-            print(f"用户已存在: {username}")
-            # 如果用户已存在，返回其ID
-            self.cursor.execute('SELECT user_id FROM users WHERE username = ?', (username,))
-            result = self.cursor.fetchone()
-            return result[0] if result else None
+            return self.cursor.lastrowid
         except Exception as e:
             print(f"添加用户失败: {e}")
             return None
-    
-    def add_friend(self, user_id, friend_id):
-        """添加好友关系（双向）"""
+            
+    def verify_user(self, username, password):
+        """验证用户登录"""
         try:
-            print(f"正在添加好友关系: user_id={user_id}, friend_id={friend_id}")
-            # 添加双向好友关系
-            self.cursor.execute(
-                'INSERT OR IGNORE INTO friendships (user_id, friend_id) VALUES (?, ?)',
-                (user_id, friend_id)
-            )
-            self.cursor.execute(
-                'INSERT OR IGNORE INTO friendships (user_id, friend_id) VALUES (?, ?)',
-                (friend_id, user_id)
-            )
-            self.conn.commit()
-            print("好友关系添加成功")
-            return True
+            self.cursor.execute('''
+                SELECT user_id, username, nickname, avatar_path
+                FROM users 
+                WHERE username = ? AND password = ?
+            ''', (username, password))
+            result = self.cursor.fetchone()
+            if result:
+                return {
+                    'user_id': result['user_id'],
+                    'username': result['username'],
+                    'nickname': result['nickname'],
+                    'avatar_path': result['avatar_path']
+                }
+            return None
         except Exception as e:
-            print(f"添加好友关系失败: {e}")
-            return False
+            print(f"验证用户失败: {e}")
+            return None
+            
+    def add_friend_request(self, user_id, friend_username):
+        """发送好友请求"""
+        try:
+            friend = self.get_user_by_username(friend_username)
+            if not friend:
+                return False, "用户不存在"
+                
+            # 检查是否已经是好友
+            self.cursor.execute('''
+                SELECT status FROM friendships 
+                WHERE (user_id = ? AND friend_id = ?) 
+                OR (user_id = ? AND friend_id = ?)
+            ''', (user_id, friend['user_id'], friend['user_id'], user_id))
+            
+            existing = self.cursor.fetchone()
+            if existing:
+                if existing['status'] == 'accepted':
+                    return False, "已经是好友"
+                elif existing['status'] == 'pending':
+                    return False, "好友请求待处理"
+                    
+            # 添加好友请求
+            self.cursor.execute('''
+                INSERT INTO friendships (user_id, friend_id, status)
+                VALUES (?, ?, 'pending')
+            ''', (user_id, friend['user_id']))
+            self.conn.commit()
+            return True, "好友请求已发送"
+        except Exception as e:
+            print(f"发送好友请求失败: {e}")
+            return False, str(e)
     
     def get_user(self, username):
         """获取用户信息"""
@@ -267,3 +291,24 @@ class Database:
         except Exception as e:
             print(f"获取好友列表失败: {e}")
             return []
+    
+    def add_friend(self, user_id, friend_id):
+        """添加好友关系"""
+        try:
+            # 添加正向关系
+            self.cursor.execute('''
+                INSERT INTO friendships (user_id, friend_id, status)
+                VALUES (?, ?, 'accepted')
+            ''', (user_id, friend_id))
+            
+            # 添加反向关系
+            self.cursor.execute('''
+                INSERT INTO friendships (user_id, friend_id, status)
+                VALUES (?, ?, 'accepted')
+            ''', (friend_id, user_id))
+            
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"添加好友关系失败: {e}")
+            return False

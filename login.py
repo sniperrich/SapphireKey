@@ -2,80 +2,63 @@ from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QLineEdit, QPushButton,
                             QLabel, QMessageBox)
 from PyQt5.QtCore import pyqtSignal, Qt
 
+from register_dialog import RegisterDialog
+
+
 class LoginWindow(QWidget):
-    login_button_clicked = pyqtSignal(str, str)  # username, nickname
+    login_success = pyqtSignal(dict)  # 发送用户信息
     
-    def __init__(self):
+    def __init__(self, db):
         super().__init__()
+        self.db = db
         self.init_ui()
         
     def init_ui(self):
-        self.setWindowTitle('登录')
-        self.setFixedSize(300, 200)
-        
         layout = QVBoxLayout()
-        layout.setSpacing(10)
         
-        # 状态标签
-        self.status_label = QLabel('')
-        self.status_label.setStyleSheet('''
-            QLabel {
-                color: red;
-                font-size: 12px;
-                padding: 5px;
-            }
-        ''')
-        layout.addWidget(self.status_label)
-        
-        # 用户名输入框
+        # 用户名输入
         self.username_input = QLineEdit()
-        self.username_input.setPlaceholderText('用户名')
-        layout.addWidget(self.username_input)
+        self.username_input.setPlaceholderText("用户名")
         
-        # 昵称输入框
-        self.nickname_input = QLineEdit()
-        self.nickname_input.setPlaceholderText('昵称')
-        layout.addWidget(self.nickname_input)
+        # 密码输入
+        self.password_input = QLineEdit()
+        self.password_input.setPlaceholderText("密码")
+        self.password_input.setEchoMode(QLineEdit.Password)
         
         # 登录按钮
-        self.login_button = QPushButton('登录')
-        self.login_button.clicked.connect(self.on_login)
-        layout.addWidget(self.login_button)
+        self.login_btn = QPushButton("登录")
+        self.login_btn.clicked.connect(self.handle_login)
+        
+        # 注册按钮
+        self.register_btn = QPushButton("注册")
+        self.register_btn.clicked.connect(self.show_register_dialog)
+        
+        # 添加到布局
+        layout.addWidget(self.username_input)
+        layout.addWidget(self.password_input)
+        layout.addWidget(self.login_btn)
+        layout.addWidget(self.register_btn)
         
         self.setLayout(layout)
-    
-    def on_login(self):
-        """处理登录按钮点击"""
+        
+    def handle_login(self):
         username = self.username_input.text().strip()
-        nickname = self.nickname_input.text().strip()
+        password = self.password_input.text()
         
-        if not username or not nickname:
-            self.show_error("用户名和昵称不能为空")
+        if not username or not password:
+            QMessageBox.warning(self, "错误", "请输入用户名和密码")
             return
-        
-        self.login_button.setEnabled(False)
-        self.show_connecting()
-        self.login_button_clicked.emit(username, nickname)
+            
+        user = self.db.verify_user(username, password)
+        if user:
+            self.login_success.emit(user)
+        else:
+            QMessageBox.warning(self, "错误", "用户名或密码错误")
+            
+    def show_register_dialog(self):
+        dialog = RegisterDialog(self.db, self)
+        dialog.exec_()
     
     def show_error(self, message):
-        """显示错误信息"""
-        self.status_label.setText(message)
-        self.status_label.setStyleSheet('''
-            QLabel {
-                color: red;
-                font-size: 12px;
-                padding: 5px;
-            }
-        ''')
-        self.login_button.setEnabled(True)
-    
-    def show_connecting(self):
-        """显示连接中状态"""
-        self.status_label.setText("正在连接服务器...")
-        self.status_label.setStyleSheet('''
-            QLabel {
-                color: #666;
-                font-size: 12px;
-                padding: 5px;
-            }
-        ''')
+        """显示错误消息"""
+        QMessageBox.warning(self, "错误", message)

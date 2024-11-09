@@ -2,6 +2,7 @@ import asyncio
 import websockets
 import json
 from PyQt5.QtCore import QObject, pyqtSignal
+from database import Database
 
 class ChatClient(QObject):
     message_received = pyqtSignal(int, str, str, str)
@@ -15,6 +16,7 @@ class ChatClient(QObject):
         self.user_id = None
         self.username = None
         self._connected = False
+        self.db = Database()  # 添加数据库实例
 
     async def connect(self, username):
         """连接到服务器并认证"""
