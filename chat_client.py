@@ -15,7 +15,7 @@ class ChatClient(QObject):
         super().__init__()
         self.websocket = None
         self._connected = False
-        self.server_url = 'ws://yourip:8795'
+        self.server_url = 'ws://8.216.86.153:8795'
         self._user_info = None
         self._message_lock = asyncio.Lock()
         
@@ -136,7 +136,7 @@ class ChatClient(QObject):
             if self._connected:
                 return True
                 
-            self.websocket = await websockets.connect('ws://yourip:8795')
+            self.websocket = await websockets.connect('ws://8.216.86.153:8795')
             self.username = username
             
             # 发送认证信息
