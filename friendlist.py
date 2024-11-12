@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QPixmap
+import asyncio
 
 class FriendItem(QWidget):
     def __init__(self, avatar_path, nickname):
@@ -37,8 +38,9 @@ class FriendItem(QWidget):
 class FriendList(QWidget):
     friend_selected = pyqtSignal(str)  # 发送被选中好友的昵称
     
-    def __init__(self):
+    def __init__(self, chat_window=None):
         super().__init__()
+        self.chat_window = chat_window
         self.init_ui()
         
     def init_ui(self):
@@ -79,6 +81,9 @@ class FriendList(QWidget):
     def on_friend_selected(self, item):
         """当好友被选中时触发"""
         friend_widget = self.list_widget.itemWidget(item)
-        nickname = friend_widget.get_nickname()  # 使用新添加的方法获取昵称
-        print(f"选中好友昵称：{nickname}")  # 调试信息
-        self.friend_selected.emit(nickname)
+        nickname = friend_widget.get_nickname()
+        print(f"选中好友昵称：{nickname}")
+        
+        # 使用 asyncio.create_task 来处理异步调用
+        if self.chat_window:
+            asyncio.create_task(self.chat_window.on_friend_selected(nickname))

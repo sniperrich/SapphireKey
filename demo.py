@@ -8,51 +8,55 @@ from qasync import QEventLoop
 from functools import partial
 from database import Database
 
-class ChatApp:
+class ChatApp(QApplication):
     def __init__(self):
-        self.app = QApplication(sys.argv)
-        self.loop = QEventLoop(self.app)
+        super().__init__(sys.argv)
+        # 初始化事件循环
+        self.loop = QEventLoop(self)
         asyncio.set_event_loop(self.loop)
         
-        # 创建数据库连接
+        # 初始化其他组件
         self.db = Database()
+        self.chat_client = ChatClient()
+        self.login_window = LoginWindow(self.db, self.chat_client)
+        self.login_window.login_success.connect(self.on_login_success)
+        self.login_window.show()
         
-        # 创建登录窗口
-        self.login_window = LoginWindow(self.db)
-        # 使用 qasync 的方式连接信号
-        self.login_window.login_success.connect(lambda user: asyncio.create_task(self.on_login_success(user)))
-    
-    async def on_login_success(self, user):
-        """登录成功的处理"""
+    def on_login_success(self, user_info):
+        """登录成功处理"""
         try:
-            # 创建聊天客户端
-            self.chat_client = ChatClient()
-            success = await self.chat_client.connect(user['username'])
+            print("登录成功，正在打开聊天窗口...")
+            print(f"用户信息: {user_info}")
             
-            if success:
-                # 创建主窗口，传入完整的用户信息
-                self.chat_window = ChatWindow(
-                    user['user_id'],  # 添加用户ID
-                    user['username'], 
-                    user['nickname'],
-                    self.chat_client
-                )
-                self.chat_window.show()
-                self.login_window.hide()
-            else:
-                QMessageBox.warning(self.login_window, "错误", "连接服务器失败")
+            self.chat_window = ChatWindow(
+                user_info['user_id'],
+                user_info['username'],
+                user_info['nickname'],
+                self.chat_client
+            )
+            self.login_window.hide()
+            self.chat_window.show()
+            print("聊天窗口已打开")
         except Exception as e:
-            print(f"登录错误: {str(e)}")
-            QMessageBox.warning(self.login_window, "错误", f"连接错误: {str(e)}")
+            print(f"打开聊天窗口失败: {e}")
+            QMessageBox.critical(None, "错误", f"打开聊天窗口失败: {str(e)}")
     
     def run(self):
-        self.login_window.show()
-        with self.loop:
-            self.loop.run_forever()
+        """运行应用"""
+        try:
+            with self.loop:
+                self.loop.run_forever()
+        except Exception as e:
+            print(f"应用运行错误: {e}")
+            QMessageBox.critical(None, "错误", f"应用运行错误: {str(e)}")
 
 def main():
-    chat_app = ChatApp()
-    chat_app.run()
+    try:
+        chat_app = ChatApp()
+        chat_app.run()
+    except Exception as e:
+        print(f"程序启动失败: {e}")
+        QMessageBox.critical(None, "错误", f"程序启动失败: {str(e)}")
 
 if __name__ == '__main__':
     main()

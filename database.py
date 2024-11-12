@@ -18,7 +18,7 @@ class Database:
     def create_tables(self):
         """创建数据库表"""
         try:
-            # 修改用户表，添加password字段
+            # 创建用户表
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,30 +31,28 @@ class Database:
             
             # 创建好友关系表
             self.cursor.execute('''
-                CREATE TABLE IF NOT EXISTS friendships (
-                    user_id INTEGER,
-                    friend_id INTEGER,
-                    status TEXT DEFAULT 'pending',
+                CREATE TABLE IF NOT EXISTS friends (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    friend_id INTEGER NOT NULL,
                     FOREIGN KEY (user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (friend_id) REFERENCES users (user_id),
-                    PRIMARY KEY (user_id, friend_id)
+                    FOREIGN KEY (friend_id) REFERENCES users (user_id)
                 )
             ''')
             
-            # 创建聊天消息表
+            # 创建聊天记录表
             self.cursor.execute('''
                 CREATE TABLE IF NOT EXISTS chat_messages (
                     message_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    from_user_id INTEGER,
-                    to_user_id INTEGER,
-                    content TEXT,
+                    sender_id INTEGER NOT NULL,
+                    receiver_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
                     message_type TEXT DEFAULT 'text',
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (from_user_id) REFERENCES users (user_id),
-                    FOREIGN KEY (to_user_id) REFERENCES users (user_id)
+                    FOREIGN KEY (sender_id) REFERENCES users (user_id),
+                    FOREIGN KEY (receiver_id) REFERENCES users (user_id)
                 )
             ''')
-            
             self.conn.commit()
         except Exception as e:
             print(f"创建表失败: {e}")
@@ -312,3 +310,48 @@ class Database:
         except Exception as e:
             print(f"添加好友关系失败: {e}")
             return False
+    
+    def save_message(self, sender_id, receiver_id, content, message_type='text'):
+        """保存聊天消息"""
+        try:
+            self.cursor.execute('''
+                INSERT INTO chat_messages (from_user_id, to_user_id, content, message_type)
+                VALUES (?, ?, ?, ?)
+            ''', (sender_id, receiver_id, content, message_type))
+            self.conn.commit()
+            return True
+        except Exception as e:
+            print(f"保存消息失败: {e}")
+            return False
+            
+    def get_chat_history(self, user_id, friend_id):
+        """获取与指定好友的聊天记录"""
+        try:
+            self.cursor.execute('''
+                SELECT 
+                    m.*,
+                    sender.nickname as sender_nickname,
+                    receiver.nickname as receiver_nickname
+                FROM chat_messages m
+                JOIN users sender ON m.from_user_id = sender.user_id
+                JOIN users receiver ON m.to_user_id = receiver.user_id
+                WHERE (m.from_user_id = ? AND m.to_user_id = ?)
+                   OR (m.from_user_id = ? AND m.to_user_id = ?)
+                ORDER BY m.timestamp ASC
+            ''', (user_id, friend_id, friend_id, user_id))
+            
+            messages = []
+            for row in self.cursor.fetchall():
+                messages.append({
+                    'content': row['content'],
+                    'type': row['message_type'],
+                    'timestamp': row['timestamp'],
+                    'is_send': row['from_user_id'] == user_id,
+                    'sender_nickname': row['sender_nickname'],
+                    'receiver_nickname': row['receiver_nickname']
+                })
+            print(f"获取到的聊天记录: {messages}")  # 调试输出
+            return messages
+        except Exception as e:
+            print(f"获取聊天记录失败: {e}")
+            return []
