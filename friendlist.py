@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QVBoxLayout, QListWidget, QListWidgetItem
 from PyQt5.QtCore import Qt, pyqtSignal, QSize
 from PyQt5.QtGui import QPixmap
+from urllib.request import urlopen
+import io
 import asyncio
 
 class FriendItem(QWidget):
@@ -11,13 +13,25 @@ class FriendItem(QWidget):
         
         # 头像
         self.avatar_label = QLabel()
-        pixmap = QPixmap(avatar_path).scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.avatar_label.setPixmap(pixmap)
+        
+        # 如果是网络图片
+        if avatar_path.startswith(('http://', 'https://')):
+            # 下载图片数据
+            image_data = urlopen(avatar_path).read()
+            pixmap = QPixmap()
+            pixmap.loadFromData(image_data)
+        else:
+            # 本地图片直接加载
+            pixmap = QPixmap(avatar_path)
+            
+        # 缩放头像
+        scaled_pixmap = pixmap.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.avatar_label.setPixmap(scaled_pixmap)
         self.avatar_label.setFixedSize(40, 40)
         
         # 昵称
         self.nickname_label = QLabel(nickname)
-        self.nickname_label.setObjectName("nickname")  # 设置对象名称
+        self.nickname_label.setObjectName("nickname")
         self.nickname_label.setStyleSheet("""
             QLabel {
                 font-family: 微软雅黑;

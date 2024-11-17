@@ -5,6 +5,9 @@ from PyQt5.QtGui import QPainter, QFont, QColor, QPixmap, QPolygon, QFontMetrics
 from PyQt5.QtWidgets import QWidget, QLabel, QHBoxLayout, QSizePolicy, QVBoxLayout, QSpacerItem, \
     QScrollArea, QScrollBar, QLineEdit, QPushButton
 from enum import Enum
+from PyQt5.QtNetwork import QNetworkAccessManager, QNetworkRequest
+import urllib.request
+import re
 
 
 
@@ -86,14 +89,32 @@ class Notice(QLabel):
 
 
 class Avatar(QLabel):
-    def __init__(self, avatar, parent=None):
+    def __init__(self, avatar_path, parent=None):
         super().__init__(parent)
-        if isinstance(avatar, str):
-            self.setPixmap(QPixmap(avatar).scaled(45, 45))
-            self.image_path = avatar
-        elif isinstance(avatar, QPixmap):
-            self.setPixmap(avatar.scaled(45, 45))
         self.setFixedSize(QSize(45, 45))
+        self.image_path = avatar_path
+        
+        # 设置默认头像
+        self.default_avatar = QPixmap('bubble_message/data/head1.jpg').scaled(45, 45)
+        self.setPixmap(self.default_avatar)
+        
+        # 加载实际头像
+        self.load_avatar()
+        
+    def load_avatar(self):
+        """加载头像"""
+        try:
+            self.loader = ImageLoader(self.image_path)
+            self.loader.image_loaded.connect(self.on_image_loaded)
+            self.loader.start()
+        except Exception as e:
+            print(f"启动图片加载失败: {e}")
+            
+    def on_image_loaded(self, path, pixmap):
+        """图片加载完成的回调"""
+        if path == self.image_path:  # 确保是当前头像的加载结果
+            scaled_pixmap = pixmap.scaled(45, 45, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.setPixmap(scaled_pixmap)
 
 
 class OpenImageThread(QThread):
@@ -133,17 +154,28 @@ class BubbleMessage(QWidget):
         self.message_type = message_type
         self.is_send = is_send
         self.timestamp = timestamp
+        
+        # 创建头像加载器
+        self.avatar_loader = ImageLoader(avatar_path)
+        self.avatar_loader.image_loaded.connect(self.on_avatar_loaded)
+        self.avatar_loader.start()
+        
         self.init_ui()
         
+    def on_avatar_loaded(self, path, pixmap):
+        """头像加载完成的回调"""
+        if path == self.avatar_path:
+            avatar_label = self.findChild(QLabel, "avatar")
+            if avatar_label:
+                scaled_pixmap = pixmap.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                avatar_label.setPixmap(scaled_pixmap)
+
     def init_ui(self):
         layout = QHBoxLayout()
         layout.setContentsMargins(10, 5, 10, 5)
         
-        # 头像
-        avatar_label = QLabel()
-        pixmap = QPixmap(self.avatar_path).scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        avatar_label.setPixmap(pixmap)
-        avatar_label.setFixedSize(40, 40)
+        # 使用新的Avatar类
+        avatar_label = Avatar(self.avatar_path)
         
         # 消息内容
         content_label = QLabel(self.content)
@@ -239,8 +271,18 @@ class ChatWidget(QWidget):
     # 添加消息发送信号
     message_sent = pyqtSignal(str)  # 发送消息内容
     
-    def __init__(self):
-        super().__init__()
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.send_avatar = None
+        self.receive_avatar = None
+        self.init_ui()
+        
+    def set_avatars(self, send_avatar, receive_avatar):
+        """设置发送者和接收者的头像"""
+        self.send_avatar = send_avatar
+        self.receive_avatar = receive_avatar
+        
+    def init_ui(self):
         self.resize(500, 200)
 
         # 创建主布
@@ -343,7 +385,7 @@ class ChatWidget(QWidget):
         # self.set_scroll_bar_last()
 
     def set_scroll_bar_last(self):
-        """滚动到最后一条消息"""
+        """滚动到最后条消息"""
         try:
             scrollbar = self.scrollArea.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
@@ -375,14 +417,14 @@ class ChatWidget(QWidget):
         except Exception as e:
             print(f"清空消息失败: {e}")
 
-    def load_chat_history(self, friend_nickname, messages, send_avatar, receive_avatar):
+    def load_chat_history(self, friend_nickname, messages):
         """加载聊天记录"""
         try:
             self.clear_messages()
             
             current_date = None
             for message in messages:
-                # 添加日期分割线
+                # 添加日期分��线
                 message_date = message["timestamp"].split()[0]
                 if current_date != message_date:
                     current_date = message_date
@@ -390,7 +432,7 @@ class ChatWidget(QWidget):
                     self.add_message_item(time_notice)
                 
                 # 添加消息气泡
-                avatar = send_avatar if message["is_send"] else receive_avatar
+                avatar = self.send_avatar if message["is_send"] else self.receive_avatar
                 msg_type = MessageType.Text if message["type"] == "text" else MessageType.Image
                 bubble = BubbleMessage(message["content"], avatar, msg_type, message["is_send"])
                 self.add_message_item(bubble)
@@ -426,3 +468,41 @@ class ChatWidget(QWidget):
             self.set_scroll_bar_last()
         except Exception as e:
             print(f"添加消息失败: {e}")
+
+
+class ImageLoader(QThread):
+    image_loaded = pyqtSignal(str, QPixmap)  # 信号：图片路径和加载好的图片
+
+    def __init__(self, image_path):
+        super().__init__()
+        self.image_path = image_path
+
+    def run(self):
+        try:
+            if self.is_url(self.image_path):
+                # 下载网络图片
+                data = urllib.request.urlopen(self.image_path).read()
+                pixmap = QPixmap()
+                pixmap.loadFromData(data)
+            else:
+                # 加载本地图片
+                pixmap = QPixmap(self.image_path)
+            
+            self.image_loaded.emit(self.image_path, pixmap)
+        except Exception as e:
+            print(f"加载图片失败: {e}")
+            # 加载失败时使用默认头像
+            default_avatar = QPixmap('bubble_message/data/head1.jpg')
+            self.image_loaded.emit(self.image_path, default_avatar)
+
+    @staticmethod
+    def is_url(path):
+        """判断是否为URL"""
+        url_pattern = re.compile(
+            r'^https?://'  # http:// or https://
+            r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain
+            r'localhost|'  # localhost
+            r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ip
+            r'(?::\d+)?'  # optional port
+            r'(?:/?|[/?]\S+)$', re.IGNORECASE)
+        return bool(url_pattern.match(path))
